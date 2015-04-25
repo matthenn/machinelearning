@@ -1,0 +1,77 @@
+---
+title: "Practical machine learning"
+author: "Matt Henn"
+date: "April 24, 2015"
+output: html_document
+---
+
+# Overview
+
+This report is the write-up for the Coursera Practical Machine Learning course project. It regards the [Human Activity Research dataset](http://groupware.les.inf.puc-rio.br/har), which contains acceleration measurements taken during specific exercises, paired with an accompanying 'grade' of how well each exercise was performed. The project was to build a model that could use the accelerometer measurements to predict the grade of a given exercise. This report describes the model's construction, validation, and accuracy, as well as provides justifications for the decisions made. 
+
+
+## How this model was built
+
+### Data preprocessing
+Training data was attained from [this link](http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) on the coursera project page. It was imported into R Studio and partitioned into training and test sets with the following code: 
+
+```{r}
+library(caret)
+dat <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+# incomplete cols (visual inspection): 12-36, 50-59, 69-83, 87-101, 103-112, 125-139, 141-150
+# subset out incomplete cols
+dat <- dat[,-c(12:36, 50:59, 69:83, 87:101, 103:112, 125:139, 141:150)]
+
+# partition into training/test sets
+inTrain <- createDataPartition(y = dat$classe,
+                               p = 0.6, list = FALSE)
+traindat <- dat[inTrain,]
+testdat <- dat[-inTrain,]
+```
+
+Note that many columns were subset out of the original data set. These columns were largely and non-uniformly incomplete. The great majority of them were blank, but some had `NA` values, and others had `DIV/0!` values. These columns would have been of limited use to build and test a model, so they were removed. 
+
+
+### Model construction
+
+Our model was built upon our partitioned training set `traindat`, and evaluated with our partitioned test set `testdat`. Research in speeding up the computation resulted in using the `randomForest()` function (with the particular syntax shown below) from the randomForest package rather than the more generalized `train()` function from the caret package to build our random forest model. 
+
+```{r, cache=TRUE}
+# create random forest model, using all acceleration measurements and the training data set
+library(randomForest)
+rfmod <- randomForest(traindat[,8:59], traindat$classe)
+# evaluate model on the test set with a confusion matrix
+rfp <- predict(rfmod, newdata = testdat)
+confusionMatrix(rfp, testdat$classe)
+```
+As shown, our model achieved a 99.22% accuracy on test data. 
+
+## Cross validation considerations
+
+One of the benefits of random forest sampling is that cross validation does not need to specifically coded for, as it is done internally during the model generation. As [described](http://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr) by Breiman and Cutler, because the forest (the final model) is constructed from the average of many possible trees (each tree being its own model, containing a set of classifiers used to distinguish groupings), and because each tree is constructed using only ~2/3 of the data, the cross-validation of the model is achieved as the trees are constructed and combined to create the forest. The sampling for each tree is uniqe and done with replacement. 
+
+## Expected out-of-sample error
+
+The expected out-of-sample error is the accuracy reported by the confusion matrix, as this is the error when the model is applied to a sample it was not trained upon. This number is slightly different each time the code is run from the beginning as the train and test samples differ, though all accuracies have been between 99.2 and 99.8%. It is worth noting here that several of the other models used in the process of this project achieved accuracies of 1. This project may not be perfectly representative of real-world predictions, but an accuracy that high on a training set warrants a speculation of over fitting. As described in the lectures, it may be better to sacrafice some accuracy in the training set in order to gain it on the test set. 
+
+## Reasons for choices
+
+Algorithms considered for this assignment were evaluated by their accuracy, computational efficiency, and interpretability. These methods were:
+
+- regression
+- discriminant analysis (DA)
+- trees
+- random forests
+- bagging
+- boosting
+
+Regression would have been the author's first choice because it is simple, interpretable, and fast to experiment with different options. But it only works when linear trends are evident in the data, and the feature plots generated for all the variables yielded no recognizable patterns. 
+
+DA was fast, accurate, offered interpretable results, and seemed like the best and simplest solution for a while. But upon further research on the technique, it was found that DA assumes noncollinearity between the predictor variables. This data set violated that assumption. 
+
+Trees was computationally mid-range and offered interpretable results, but the accuracy was around 66% on the partitioned test data sets. 
+
+Random forests was slower than the other methods and not easily interpretable, but very accurate on test partitions. An additional benefit was that the cross validation consideration was already taken care of within the model fitting. This was the chosen method. 
+
+Bagging and boosting both offered accurate solutions, but they were simply too computationally intensive to experiment with enough to consider them superior to a random forest model. 
+
